@@ -1,0 +1,37 @@
+const { assert, hre, receipt, event, rejects, same, requireLocalMock } = require('./cwzec-helpers.cjs');
+const { FhevmType } = require('@fhevm/hardhat-plugin');
+describe('cUSDC wrapper', function () {
+  for (const precision of [6, 8]) it(`backing, rounding, transfer, unwrap and limits (${precision} decimals)`, async function () {
+    requireLocalMock();
+    const [alice, bob] = await hre.ethers.getSigners();
+    const u = await (await hre.ethers.getContractFactory('MockUSDC')).deploy(precision);
+    const t = await (await hre.ethers.getContractFactory('CUSDC')).deploy(await u.getAddress());
+    const addr = await t.getAddress();
+    const rate = 10n ** BigInt(precision - 6);
+    assert.equal(await t.decimals(), 6n);
+    assert.equal(await t.rate(), rate);
+    const amount = 100n * rate + rate - 1n;
+    await receipt(u.mint(alice.address, amount));
+    await receipt(u.approve(addr, amount));
+    await receipt(t.wrap(alice.address, amount));
+    assert.equal(await u.balanceOf(addr), 100n * rate);
+    assert.equal(await u.balanceOf(alice.address), rate - 1n);
+    let e = await hre.fhevm.createEncryptedInput(addr, alice.address).add64(40n).encrypt();
+    await receipt(t['confidentialTransfer(address,bytes32,bytes)'](bob.address, e.handles[0], e.inputProof));
+    same(await hre.fhevm.userDecryptEuint(FhevmType.euint64, await t.confidentialBalanceOf(bob.address), addr, bob), 40n, 'confidential transfer');
+    e = await hre.fhevm.createEncryptedInput(addr, bob.address).add64(40n).encrypt();
+    const log = event(t, await receipt(t.connect(bob)['unwrap(address,address,bytes32,bytes)'](bob.address, bob.address, e.handles[0], e.inputProof)), 'UnwrapRequested');
+    await rejects(() => t.finalizeUnwrap(log.unwrapRequestId, 41n, '0x'));
+    assert.equal(await t.unwrapRequester(log.unwrapRequestId), bob.address);
+    await rejects(() => t.onTransferReceived(alice.address, alice.address, 1n, '0x'));
+    const decrypted = await hre.fhevm.publicDecrypt([log.unwrapRequestId]);
+    await receipt(t.finalizeUnwrap(log.unwrapRequestId, 40n, decrypted.decryptionProof));
+    assert.equal(await u.balanceOf(bob.address), 40n * rate);
+    await rejects(() => t.finalizeUnwrap(log.unwrapRequestId, 40n, decrypted.decryptionProof));
+    const max = (1n << 64n) - 1n;
+    assert.equal(await t.maxTotalSupply(), max);
+    await receipt(u.mint(alice.address, max * rate));
+    await receipt(u.approve(addr, max * rate));
+    await rejects(() => t.wrap(alice.address, max * rate));
+  });
+});

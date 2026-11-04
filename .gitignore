@@ -46,3 +46,6 @@ coverage/
 *.db
 *.dump
 *.sql.gz
+
+# Local agent metadata.
+.serena/
