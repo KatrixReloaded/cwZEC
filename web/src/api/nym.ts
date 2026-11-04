@@ -6,7 +6,7 @@ export interface MixInit {
 }
 type MixFetch = (url: string, init: MixInit) => Promise<Response>
 
-/** The tunnel failed or stalled. It is one-shot per page, so only a reload can retry. */
+/** Tunnel setup failed. It is one-shot per page, so only a reload can retry setup. */
 export class TunnelError extends Error {}
 /** Too many requests are still in flight (including abandoned ones that haven't settled). */
 export class TunnelBusy extends Error {}
@@ -57,12 +57,8 @@ export function createTransport(setup: () => Promise<MixFetch> = load) {
       )
       if (!signal) return req
       return new Promise((resolve, reject) => {
-        const abort = () => {
-          if (signal.reason?.name === 'TimeoutError') {
-            failure ??= new TunnelError('Nym connection stalled. Reload to reconnect.')
-          }
-          reject(failure ?? signal.reason)
-        }
+        // A caller's deadline says nothing about the shared tunnel's health.
+        const abort = () => reject(signal.reason)
         signal.addEventListener('abort', abort, { once: true })
         req.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort))
       })

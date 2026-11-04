@@ -23,9 +23,9 @@ Zama relayer are not routed. The API still receives the addresses and request da
 
 - One tunnel per page, started lazily by the first request (an 18 MB lazy chunk with inlined WASM and
   worker), default mixing and cover traffic. All live requests wait for it.
-- No native `fetch` fallback. If setup fails or a GET times out, the connection requires a page
-  reload; the banner reads "Couldn't connect through Nym." with Reload. Other request failures
-  use the existing "Bridge unavailable".
+- No native `fetch` fallback. If setup fails, the connection requires a page reload; the banner
+  reads "Couldn't connect through Nym." with Reload. A request timeout does not disable the
+  shared tunnel: status polling retries, and other requests can still finish.
 - `maxRedirects: 0`: a redirect with `Location` rejects (`too many redirects (>0)`). Other 3xx fail as
   HTTP errors. The SDK never shares the browser's cookies, and we send no credentials.
 - mix-fetch can't cancel. Aborting (new key, unmount, newer memo request) drops the late result, but
@@ -85,8 +85,8 @@ MetaMask. The bridge's chain, contract, deposit address, fee and minimum come fr
 
 - **Transport** — all of the below go through Nym (see above).
 - **Status** — `GET /v1/info`, `/v1/deposits/{txid}`, `/v1/redeems/{id}`, polled 5 s after each
-  attempt settles; stale data is labelled. GET calls have a 60 s UI deadline; a timeout marks
-  the tunnel stalled and shows Reload instead of adding retries to that connection. Requests
+  attempt settles; stale data is labelled. GET calls have a 60 s UI deadline; a timeout fails
+  that attempt, and polling retries through the same tunnel. Requests
   cancelled during setup are not dispatched. Calls already dispatched retain their Nym slot
   until the SDK settles them; the six-request bound still applies. Mint/payout completion
   follows backend status only.
