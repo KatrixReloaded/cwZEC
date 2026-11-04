@@ -14,7 +14,7 @@ const wallet = { connected: true, address: '0x1111111111111111111111111111111111
 let state: ReturnType<typeof useSwap>
 const render = () => renderToStaticMarkup(<SwapView wallet={wallet} onConnect={vi.fn()} />)
 beforeEach(() => {
-  state = { amount: '', slippage: '50', config: null, permission: false, message: '', readError: '', busy: false, tracking: null } as ReturnType<typeof useSwap>
+  state = { amount: '', slippage: '50', config: null, permission: false, message: '', readError: '', busy: false, preparingSwap: false, tracking: null } as ReturnType<typeof useSwap>
   vi.mocked(useSwap).mockImplementation(() => state)
 })
 
@@ -42,4 +42,22 @@ it('keeps authorization disabled while a transaction needs recovery', () => {
   const html = render()
   expect(html).toMatch(/<button class="btn btn-s" disabled="">Authorize operator/)
   expect(html).toContain('Outcome uncertain')
+})
+
+it.each(['authorization', 'swap'] as const)('allows amount entry with hidden balances and a restored %s transaction', kind => {
+  state.tracking = { kind, nonce: '4' }
+  state.busy = true // Confirmation checks do not freeze the next draft.
+  const html = render()
+  expect(html.match(/<input id="swap-amount"[^>]*>/)?.[0]).not.toContain('disabled')
+  expect(html.match(/<select id="swap-slippage"[^>]*>/)?.[0]).not.toContain('disabled')
+  expect(html).toContain('Encrypted')
+  expect(html).toMatch(/<button class="btn btn-p btn-x" disabled="">Swap/)
+})
+
+it('freezes the amount and slippage while preparing and sending a swap', () => {
+  state.preparingSwap = true
+  state.busy = true
+  const html = render()
+  expect(html.match(/<input id="swap-amount"[^>]*>/)?.[0]).toContain('disabled')
+  expect(html.match(/<select id="swap-slippage"[^>]*>/)?.[0]).toContain('disabled')
 })

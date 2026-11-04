@@ -20,7 +20,7 @@ export function SwapView({ wallet, onConnect }: { wallet: Wallet; onConnect: () 
         <div className="swap-pair"><h2>cwZEC → cUSDC</h2><span className="muted">Sepolia · Mock-backed cUSDC</span></div>
         <div className="fld">
           <label className="lbl" htmlFor="swap-amount">You pay · cwZEC</label>
-          <div className="hud"><input id="swap-amount" className="inp mono" inputMode="decimal" autoComplete="off" placeholder="0.0" maxLength={40} value={s.amount} disabled={s.busy || !!s.tracking} onChange={e => s.setAmount(e.target.value)} aria-describedby="swap-validation" aria-invalid={!!s.amount && !!s.invalid} /></div>
+          <div className="hud"><input id="swap-amount" className="inp mono" inputMode="decimal" autoComplete="off" placeholder="0.0" maxLength={40} value={s.amount} disabled={s.preparingSwap} onChange={e => s.setAmount(e.target.value)} aria-describedby="swap-validation" aria-invalid={!!s.amount && !!s.invalid} /></div>
           <div className="help" id="swap-validation">{s.amount && s.invalid ? s.invalid : 'Up to 8 decimals'}</div>
         </div>
       </Section>
@@ -30,7 +30,7 @@ export function SwapView({ wallet, onConnect }: { wallet: Wallet; onConnect: () 
           <div className="dl-row"><dt>Minimum receive</dt><dd>{s.priceReady && s.estimate ? `${units(s.estimate.minimum)} cUSDC` : '—'}</dd></div>
           <div className="dl-row"><dt>Fee</dt><dd>{s.config ? `${units(s.config.fee, 2)}%` : '—'}</dd></div>
         </dl>
-        <div className="swap-slippage"><label htmlFor="swap-slippage">Slippage</label><select id="swap-slippage" value={s.slippage} disabled={s.busy || !!s.tracking} onChange={e => s.setSlippage(e.target.value)}><option value="10">0.1%</option><option value="50">0.5%</option><option value="100">1%</option></select></div>
+        <div className="swap-slippage"><label htmlFor="swap-slippage">Slippage</label><select id="swap-slippage" value={s.slippage} disabled={s.preparingSwap} onChange={e => s.setSlippage(e.target.value)}><option value="10">0.1%</option><option value="50">0.5%</option><option value="100">1%</option></select></div>
         <span className="help">{s.priceReady ? 'Signed reference price · inventory is confidential' : 'Price unavailable'}</span>
       </Section>
       <Section i={2}>

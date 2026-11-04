@@ -18,6 +18,7 @@ export function useSwap(wallet: Wallet) {
   const [message, setMessage] = useState('')
   const [readError, setReadError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [preparingSwap, setPreparingSwap] = useState(false)
   const [tracking, setTracking] = useState<Tracking | null>(null)
   const [completedHash, setCompletedHash] = useState<Hex | null>(null)
   const [handle, setHandle] = useState<Hex | null>(null)
@@ -102,7 +103,11 @@ export function useSwap(wallet: Wallet) {
     if (!accepted || !selectedQuote || !config || !priceReady) return
     return run(async check => {
       setHandle(null)
-      const t = await executeSwap(account!, accepted, config.fee, check, setMessage, tracked, lifetime.current?.signal)
+      let t: Tracking
+      setPreparingSwap(true)
+      try {
+        t = await executeSwap(account!, accepted, config.fee, check, setMessage, tracked, lifetime.current?.signal)
+      } finally { setPreparingSwap(false) }
       check(); await track(t, check)
     })
   }
@@ -126,5 +131,5 @@ export function useSwap(wallet: Wallet) {
       check(); setMessage('Transaction confirmed — verify balances. Payment reveal unavailable.')
     }
   })
-  return { amount, setAmount, slippage, setSlippage, config, quote, priceReady, estimate, invalid, permission, message, readError, busy, tracking, handle, completedHash, authorize, swap, resume, verify }
+  return { amount, setAmount, slippage, setSlippage, config, quote, priceReady, estimate, invalid, permission, message, readError, busy, preparingSwap, tracking, handle, completedHash, authorize, swap, resume, verify }
 }
