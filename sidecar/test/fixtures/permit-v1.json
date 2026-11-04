@@ -1,0 +1,67 @@
+{
+  "provenance": "Generated with installed @fhevm/sdk 0.13.2 permit builder; synthetic public key and contract, no signature or secret",
+  "context": "0x0700000000000000000000000000000000000000000000000000000000000001",
+  "publicKey": "0xabababababababababababababababababababababababababababababababab",
+  "startTimestamp": "1792990000",
+  "typedData": {
+    "domain": {
+      "name": "Decryption",
+      "version": "1",
+      "chainId": "11155111",
+      "verifyingContract": "0x5D8BD78e2ea6bbE41f26dFe9fdaEAa349e077478"
+    },
+    "types": {
+      "EIP712Domain": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "name": "chainId",
+          "type": "uint256"
+        },
+        {
+          "name": "verifyingContract",
+          "type": "address"
+        }
+      ],
+      "UserDecryptRequestVerification": [
+        {
+          "name": "publicKey",
+          "type": "bytes"
+        },
+        {
+          "name": "contractAddresses",
+          "type": "address[]"
+        },
+        {
+          "name": "startTimestamp",
+          "type": "uint256"
+        },
+        {
+          "name": "durationDays",
+          "type": "uint256"
+        },
+        {
+          "name": "extraData",
+          "type": "bytes"
+        }
+      ]
+    },
+    "primaryType": "UserDecryptRequestVerification",
+    "message": {
+      "publicKey": "0xabababababababababababababababababababababababababababababababab",
+      "contractAddresses": [
+        "0x1111111111111111111111111111111111111111"
+      ],
+      "startTimestamp": "1792990000",
+      "durationDays": "1",
+      "extraData": "0x010700000000000000000000000000000000000000000000000000000000000001"
+    }
+  },
+  "digest": "0x8d843d566e62948c03be737ded55ae3060db5df291a34bfd3120eb4d766927f9"
+}

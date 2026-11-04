@@ -1,0 +1,10 @@
+{
+  "name": "cwzec-sidecar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=22"},
+  "scripts": {"check": "tsc --noEmit", "test": "node --test test/*.test.ts", "start": "../scripts/sidecar-start.sh"},
+  "dependencies": {"@zama-fhe/sdk": "3.7.1", "ethers": "6.16.0", "viem": "2.54.3", "zod": "4.4.3", "@tanstack/query-core": "5.101.2"},
+  "devDependencies": {"@types/node": "24.10.1", "typescript": "5.9.3"}
+}
