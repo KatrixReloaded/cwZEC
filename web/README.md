@@ -242,3 +242,12 @@ validate the frontend. `src/swap/*.test.ts` use synthetic keys, mocked wallets,
 SDKs and receipts; they are **not live swap/decryption acceptance**. No funded
 swap or live decryption has been observed during this implementation. Public
 HTTPS setup and the user's MetaMask signatures remain required for live acceptance.
+
+Local quote connectivity verified 2026-11-04: the user-supplied public HTTPS
+origin is configured in ignored `web/.env.local` and included in the local
+production build. A browser request through the shared Nym transport returned a
+fresh quote, verified against the configured signer, with 46 seconds remaining;
+no direct browser HTTP request to that origin was observed. All 119 frontend
+tests and the production build passed. Hosted builds need the same environment
+setting supplied separately. Wallet signatures, funded swaps and live decryption
+acceptance remain pending.
