@@ -41,10 +41,10 @@ Zama relayer are not routed. The API still receives the addresses and request da
 
 `netlify.toml`: base directory `web`, build `npm ci && npm run build`, publish `dist`, plus the CSP:
 
-- `connect-src 'self' https://validator.nymtech.net wss: https://relayer.testnet.zama.org` is the Nym
-  bootstrap, the gateway WebSockets (hosts and ports such as `:9001` come from topology, so `wss:`
-  must stay broad), and the Zama relayer for balance reveal. The API origin is deliberately absent, so
-  any direct browser request to it is blocked.
+- `connect-src` permits Nym bootstrap, gateway WebSockets, the Zama relayer, and
+  `https://zama-mpc-testnet-public-efd88e2b.s3.eu-west-1.amazonaws.com` for public encryption keys
+  and proof parameters. Gateway hosts and ports come from topology, so `wss:` stays broad.
+  Bridge API and quote origins remain absent, blocking direct browser requests to them.
 - `worker-src 'self' blob:` and `script-src 'self' 'wasm-unsafe-eval'` cover the tunnel worker and the WASM.
 - Fonts come from Google Fonts. There is no API proxy or function.
 

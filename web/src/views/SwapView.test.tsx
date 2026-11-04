@@ -21,7 +21,7 @@ beforeEach(() => {
 it('lets authorization retry when background configuration has not loaded', () => {
   state.readError = 'Wallet RPC unavailable'
   const html = render()
-  expect(html).toMatch(/<button class="btn btn-s">Authorize operator/)
+  expect(html).toMatch(/<button class="btn btn-s">Enable swapping/)
   expect(html).toContain('Wallet RPC unavailable')
   expect(html.indexOf('Wallet RPC unavailable')).toBeLessThan(html.indexOf('Private wallet balances'))
   expect(html).toMatch(/<button class="btn btn-p btn-x" disabled="">Swap/)
@@ -40,7 +40,7 @@ it('shows progress beside the action and prevents duplicate clicks while checkin
 it('offers an explicit same-nonce retry for a restored authorization', () => {
   state.tracking = { kind: 'authorization', nonce: '4' }
   const html = render()
-  expect(html).toMatch(/<button class="btn btn-s">Retry authorization/)
+  expect(html).toMatch(/<button class="btn btn-s">Retry enabling swaps/)
   expect(html).toContain('Reuses the previous nonce')
   expect(html).toContain('No transaction hash saved')
   expect(html).toMatch(/<button class="btn btn-p btn-x" disabled="">Swap/)
@@ -49,9 +49,9 @@ it('offers an explicit same-nonce retry for a restored authorization', () => {
 it('keeps swap recovery separate and never offers to retry an uncertain swap', () => {
   state.tracking = { kind: 'swap', nonce: '4' }
   const html = render()
-  expect(html).toMatch(/<button class="btn btn-s" disabled="">Authorize operator/)
+  expect(html).toMatch(/<button class="btn btn-s" disabled="">Enable swapping/)
   expect(html).toContain('Outcome uncertain')
-  expect(html).not.toContain('Retry authorization')
+  expect(html).not.toContain('Retry enabling swaps')
 })
 
 it.each(['authorization', 'swap'] as const)('allows amount entry with hidden balances and a restored %s transaction', kind => {
