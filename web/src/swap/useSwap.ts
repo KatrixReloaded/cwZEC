@@ -16,6 +16,7 @@ export function useSwap(wallet: Wallet) {
   const [quote, setQuote] = useState<Signed | null>(null)
   const [permission, setPermission] = useState(false)
   const [message, setMessage] = useState('')
+  const [readError, setReadError] = useState('')
   const [busy, setBusy] = useState(false)
   const [tracking, setTracking] = useState<Tracking | null>(null)
   const [completedHash, setCompletedHash] = useState<Hex | null>(null)
@@ -31,7 +32,7 @@ export function useSwap(wallet: Wallet) {
     let timer: ReturnType<typeof setTimeout>
     const abort = new AbortController()
     lifetime.current = abort
-    setAmount(''); setConfig(null); setQuote(null); setPermission(false); setMessage(''); setHandle(null); setCompletedHash(null)
+    setAmount(''); setConfig(null); setQuote(null); setPermission(false); setMessage(''); setReadError(''); setHandle(null); setCompletedHash(null)
     setTracking(account ? loadTracking(account) : null)
     const off = metamask.subscribe(() => { generation.current++; setRevision(r => r + 1); abort.abort(); setQuote(null); setHandle(null); setMessage(''); setCompletedHash(null); setConfig(null); setPermission(false) })
     const tick = setInterval(() => setClock(now()), 1000)
@@ -45,8 +46,13 @@ export function useSwap(wallet: Wallet) {
         if (id !== generation.current) return
         setConfig(c); setPermission(allowed)
         const q = await fetchQuote(c.signer, abort.signal)
-        if (id === generation.current && !lock.current) setQuote(q)
-      } catch { if (id === generation.current) setQuote(null) }
+        if (id === generation.current && !lock.current) { setQuote(q); setReadError('') }
+      } catch (e) {
+        if (id === generation.current && !lock.current) {
+          setQuote(null)
+          setReadError((e as { shortMessage?: string }).shortMessage || (e as Error).message)
+        }
+      }
       if (id === generation.current) timer = setTimeout(poll, 15000)
     }
     void poll()
@@ -58,7 +64,7 @@ export function useSwap(wallet: Wallet) {
   const priceReady = !!quote && quote.quote.expiresAt > clock
   async function run(work: (check: () => void) => Promise<void>) {
     if (lock.current || !account || DEMO) return
-    lock.current = true; setBusy(true); setMessage('')
+    lock.current = true; setBusy(true); setMessage(''); setReadError('')
     const id = generation.current
     const check = () => { if (id !== generation.current || scope.current !== account) throw Error('Wallet changed — operation stopped') }
     try { await work(check) } catch (e) { if (id === generation.current) setMessage((e as Error).message) }
@@ -83,7 +89,9 @@ export function useSwap(wallet: Wallet) {
   const authorize = () => run(async check => {
     setHandle(null)
     if (loadTracking(account!)) throw Error('Resolve the tracked transaction first')
-    await session(account!); check(); await configuration(); check()
+    setMessage('Checking wallet and Swap contracts…')
+    await session(account!); check()
+    const c = await configuration(); check(); setConfig(c)
     setMessage('Authorize Swap as cwZEC operator for 10 minutes in MetaMask')
     const t = await send(account!, 'authorization', authorizationData(now()), check, tracked)
     check(); await track(t, check)
@@ -118,5 +126,5 @@ export function useSwap(wallet: Wallet) {
       check(); setMessage('Transaction confirmed — verify balances. Payment reveal unavailable.')
     }
   })
-  return { amount, setAmount, slippage, setSlippage, config, quote, priceReady, estimate, invalid, permission, message, busy, tracking, handle, completedHash, authorize, swap, resume, verify }
+  return { amount, setAmount, slippage, setSlippage, config, quote, priceReady, estimate, invalid, permission, message, readError, busy, tracking, handle, completedHash, authorize, swap, resume, verify }
 }
