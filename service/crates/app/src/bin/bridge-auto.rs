@@ -126,7 +126,11 @@ async fn run(stage: &mut &'static str) -> Result<()> {
             .unwrap_or("8787".into())
             .parse()?;
         ensure!(port != 0, "invalid HTTP port");
-        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
+        let host: std::net::IpAddr = env::var("BRIDGE_HTTP_HOST")
+            .unwrap_or_else(|_| "127.0.0.1".into())
+            .parse()
+            .context("invalid HTTP host")?;
+        let listener = tokio::net::TcpListener::bind((host, port)).await?;
         let api = app::api::BridgeApi::new(
             Store::connect(&c.database_url).await?,
             Arc::new(CwzecClient::connect(&c.endpoint, c.chain_id, c.contract).await?),
@@ -138,7 +142,7 @@ async fn run(stage: &mut &'static str) -> Result<()> {
             ready.clone(),
         )
         .with_payment_lock(wallet.payment_lock.clone());
-        eprintln!("cWZEC bridge HTTP listening on 127.0.0.1:{port}");
+        eprintln!("cWZEC bridge HTTP listening on {}", listener.local_addr()?);
         let mut http_shutdown = shutdown.clone();
         Some(tokio::spawn(async move {
             axum::serve(listener, app::api::bridge_router(Arc::new(api)))

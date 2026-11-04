@@ -2,6 +2,10 @@
 set -eu
 cd "$(dirname "$0")/.."
 umask 077
+if [ -f .local/hosted-bridge-active ]; then
+    echo 'Bridge moved to hosted deployment. Restore its latest database before local startup; see deploy/railway/README.md.' >&2
+    exit 1
+fi
 if [ "${1:-}" != legacy-wallet ]; then
     if [ ! -s .local/backed.env ] || [ ! -s .local/backed-deployment.json ]; then
         echo 'Verified backed configuration and deployment required. See README clean setup; an empty database cannot authorize bridge payments.' >&2
