@@ -35,7 +35,7 @@ export function SwapView({ wallet, onConnect }: { wallet: Wallet; onConnect: () 
       </Section>
       <Section i={2}>
         {DEMO ? <span className="help">Swap requires live mode. No simulated swaps.</span> : !wallet.connected ? <button className="btn btn-p btn-x" onClick={wallet.status === 'wrong' ? wallet.switchNetwork : onConnect}>{wallet.status === 'wrong' ? 'Switch to Sepolia' : 'Connect wallet'}</button> : <>
-          {!s.permission && <><button className="btn btn-s" disabled={s.busy || !!s.tracking} onClick={() => void s.authorize()}>{s.busy ? 'Working…' : 'Authorize operator · 10 min'}</button><span className="help">Allows this pool to transfer cwZEC for 10 minutes.</span></>}
+          {(!s.permission || s.tracking?.kind === 'authorization') && <><button className="btn btn-s" disabled={s.busy || s.tracking?.kind === 'swap'} onClick={() => void s.authorize()}>{s.busy ? 'Working…' : s.tracking?.kind === 'authorization' ? 'Retry authorization' : 'Authorize operator · 10 min'}</button><span className="help">{s.tracking?.kind === 'authorization' ? 'Reuses the previous nonce; may replace the earlier authorization.' : 'Allows this pool to transfer cwZEC for 10 minutes.'}</span></>}
           <button className="btn btn-p btn-x" disabled={s.busy || !!s.tracking || !s.priceReady || !s.estimate || !s.permission} onClick={() => void s.swap()}>Swap</button>
         </>}
         <div role="status" aria-live="polite" className="swap-status">{s.message || s.readError || (s.busy ? 'Working…' : 'Encrypted amounts. Confirm each request in MetaMask.')}</div>
@@ -53,7 +53,7 @@ export function SwapView({ wallet, onConnect }: { wallet: Wallet; onConnect: () 
       <Section i={2} m={4}>
         {(s.tracking?.hash || s.completedHash) && <a href={explorerTx(s.tracking?.hash ?? s.completedHash!)} target="_blank" rel="noreferrer">View {s.tracking?.kind ?? 'swap'} transaction ↗</a>}
         {s.tracking && <>
-          {!s.tracking.hash && <><span className="help">Outcome uncertain. Check MetaMask activity; do not submit again.</span><label className="lbl" htmlFor="swap-recovery">Transaction hash</label><input className="inp mono" id="swap-recovery" value={recovery} onChange={e => setRecovery(e.target.value)} /></>}
+          {!s.tracking.hash && <><span className="help">{s.tracking.kind === 'authorization' ? 'No transaction hash saved. Check MetaMask activity or retry authorization above.' : 'Outcome uncertain. Check MetaMask activity; do not submit again.'}</span><label className="lbl" htmlFor="swap-recovery">Transaction hash</label><input className="inp mono" id="swap-recovery" value={recovery} onChange={e => setRecovery(e.target.value)} /></>}
           <button className="btn btn-s" disabled={s.busy} onClick={() => void s.resume(recovery || undefined)}>Check confirmations</button>
         </>}
         {s.handle && <button className="btn btn-s" disabled={s.busy} onClick={() => void s.verify()}>Verify exact payment · sign reveal</button>}

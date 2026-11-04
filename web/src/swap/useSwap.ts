@@ -4,7 +4,7 @@ import { DEMO } from '../config'
 import type { Wallet } from '../hooks/useWallet'
 import { metamask } from '../wallet/metamask'
 import { now, outcome, paymentHandle, terms, type Signed } from './core'
-import { authorizationData, authorized, clearTracking, configuration, confirmed, loadTracking, saveTracking, send, session, type Tracking } from './chain'
+import { authorizationData, authorized, clearTracking, configuration, confirmed, loadTracking, recoverAuthorization, retryAuthorization, saveTracking, send, session, type Tracking } from './chain'
 import { fetchQuote } from './quote'
 import { executeSwap } from './flow'
 
@@ -42,10 +42,16 @@ export function useSwap(wallet: Wallet) {
       if (lock.current) { timer = setTimeout(poll, 15000); return }
       try {
         await session(account)
+        const recovered = await recoverAuthorization(account, () => { if (id !== generation.current || lock.current) throw Error('Operation changed') })
+        if (recovered) setTracking(null)
         const c = await configuration()
         const allowed = await authorized(account)
-        if (id !== generation.current) return
+        if (id !== generation.current || lock.current) {
+          if (id === generation.current) timer = setTimeout(poll, 15000)
+          return
+        }
         setConfig(c); setPermission(allowed)
+        if (recovered) setMessage(allowed ? 'Operator authorization is active' : 'Previous authorization settled — authorize again')
         const q = await fetchQuote(c.signer, abort.signal)
         if (id === generation.current && !lock.current) { setQuote(q); setReadError('') }
       } catch (e) {
@@ -79,9 +85,8 @@ export function useSwap(wallet: Wallet) {
     if (result.receipt.status !== 'success') { setMessage('Transaction reverted'); return }
     if (t.kind === 'authorization') {
       const allowed = await authorized(account!); check(); setPermission(allowed)
-      setMessage('Operator authorization confirmed')
+      setMessage(allowed ? 'Operator authorization confirmed' : 'Operator authorization expired or inactive — authorize again')
       setQuote(null)
-      const q = await fetchQuote(config?.signer ?? (await configuration()).signer); check(); setQuote(q)
     } else {
       setHandle(paymentHandle(result.receipt.logs, account!))
       setMessage('Transaction confirmed — verify balances')
@@ -89,12 +94,21 @@ export function useSwap(wallet: Wallet) {
   }
   const authorize = () => run(async check => {
     setHandle(null)
-    if (loadTracking(account!)) throw Error('Resolve the tracked transaction first')
     setMessage('Checking wallet and Swap contracts…')
     await session(account!); check()
     const c = await configuration(); check(); setConfig(c)
-    setMessage('Authorize Swap as cwZEC operator for 10 minutes in MetaMask')
-    const t = await send(account!, 'authorization', authorizationData(now()), check, tracked)
+    if (await recoverAuthorization(account!, check)) { setTracking(null) }
+    check()
+    const previous = loadTracking(account!)
+    if (previous?.kind === 'swap') throw Error('Resolve the tracked swap first')
+    if (!previous) {
+      const allowed = await authorized(account!); check(); setPermission(allowed)
+      if (allowed) { setMessage('Operator authorization is already active'); return }
+    }
+    setMessage(previous ? 'Retry authorization in MetaMask using the previous nonce' : 'Authorize Swap as cwZEC operator for 10 minutes in MetaMask')
+    const t = previous
+      ? await retryAuthorization(account!, authorizationData(now()), check, tracked)
+      : await send(account!, 'authorization', authorizationData(now()), check, tracked)
     check(); await track(t, check)
   })
   const swap = () => {
@@ -114,6 +128,13 @@ export function useSwap(wallet: Wallet) {
   const resume = (hash?: string) => run(async check => {
     const t = loadTracking(account!)
     if (!t) { setTracking(null); throw Error('No transaction to track') }
+    await session(account!); check()
+    if (t.kind === 'authorization' && await recoverAuthorization(account!, check)) {
+      setTracking(null)
+      const allowed = await authorized(account!); check(); setPermission(allowed)
+      setMessage(allowed ? 'Operator authorization is active' : 'Previous authorization settled — authorize again')
+      return
+    }
     if (hash) {
       if (!/^0x[\da-f]{64}$/i.test(hash)) throw Error('Enter a valid transaction hash')
       t.hash = hash as Hex; saveTracking(account!, t); tracked(t)

@@ -34,7 +34,24 @@ export function loadTracking(account: string): Tracking | null {
 }
 export function saveTracking(account: string, t: Tracking) { localStorage.setItem(trackingKey(account), JSON.stringify(t)) }
 export function clearTracking(account: string) { localStorage.removeItem(trackingKey(account)) }
-/** Persist the public nonce BEFORE entering MetaMask. An ambiguous send is never retried. */
+/** A consumed nonce cannot execute again. Require the same canonical two-confirmation block. */
+export async function recoverAuthorization(account: string, current: () => void) {
+  const t = loadTracking(account)
+  if (t?.kind !== 'authorization') return false
+  const c = client(), head = await c.getBlockNumber({ cacheTime: 0 })
+  if (head < 1n) return false
+  const blockNumber = head - 1n
+  const block = await c.getBlock({ blockNumber })
+  const nonce = await c.getTransactionCount({ address: getAddress(account), blockNumber })
+  if (BigInt(nonce) <= BigInt(t.nonce)) return false
+  const canonical = await c.getBlock({ blockNumber })
+  current()
+  if (!block.hash || block.hash !== canonical.hash) throw Error('Confirmation changed — check again')
+  if (JSON.stringify(loadTracking(account)) !== JSON.stringify(t)) throw Error('Tracking changed — check again')
+  clearTracking(account)
+  return true
+}
+/** Persist the public nonce BEFORE entering MetaMask. Never retry an ambiguous send automatically. */
 export async function send(account: string, kind: Tracking['kind'], data: Hex, current: () => void, onTrack: (t: Tracking) => void, p = metamask.provider()) {
   current(); await session(account, p); current()
   if (loadTracking(account)) throw Error('Resolve the tracked transaction first')
@@ -43,15 +60,34 @@ export async function send(account: string, kind: Tracking['kind'], data: Hex, c
   if (loadTracking(account)) throw Error('Resolve the tracked transaction first')
   const tracking: Tracking = { kind, nonce: BigInt(nonce).toString() }
   saveTracking(account, tracking); onTrack(tracking)
+  return submit(account, data, tracking, onTrack, p)
+}
+/** Explicit authorization-only replacement: reuse the old nonce, never submit at the next one. */
+export async function retryAuthorization(account: string, data: Hex, current: () => void, onTrack: (t: Tracking) => void, p = metamask.provider()) {
+  current(); await session(account, p); current()
+  const previous = loadTracking(account)
+  if (previous?.kind !== 'authorization') throw Error('No authorization to retry')
+  const nonce = await p.request({ method: 'eth_getTransactionCount', params: [account, 'latest'] }) as Hex
+  current()
+  if (BigInt(nonce) > BigInt(previous.nonce)) throw Error('Previous authorization nonce is mined — check confirmations')
+  if (JSON.stringify(loadTracking(account)) !== JSON.stringify(previous)) throw Error('Tracking changed — check again')
+  return submit(account, data, { ...previous }, onTrack, p, previous)
+}
+async function submit(account: string, data: Hex, tracking: Tracking, onTrack: (t: Tracking) => void, p: Eip1193Provider, previous?: Tracking) {
   try {
-    const hash = await p.request({ method: 'eth_sendTransaction', params: [{ from: account, to: kind === 'swap' ? POOL : ZEC, data, value: '0x0', chainId: '0xaa36a7', nonce }] })
+    const hash = await p.request({ method: 'eth_sendTransaction', params: [{ from: account, to: tracking.kind === 'swap' ? POOL : ZEC, data, value: '0x0', chainId: '0xaa36a7', nonce: `0x${BigInt(tracking.nonce).toString(16)}` }] })
     if (typeof hash !== 'string' || !/^0x[\da-f]{64}$/i.test(hash)) throw Error('Unknown wallet response')
     tracking.hash = hash as Hex
     saveTracking(account, tracking); onTrack(tracking)
     return tracking
   } catch (e) {
-    if ((e as { code?: number }).code === 4001) { clearTracking(account); onTrack({ ...tracking, nonce: '' }); throw Error('Request cancelled in MetaMask') }
-    throw Error('Transaction outcome uncertain — check MetaMask activity; do not resubmit')
+    if ((e as { code?: number }).code === 4001) {
+      if (!previous) { clearTracking(account); onTrack({ ...tracking, nonce: '' }) }
+      throw Error(previous ? 'Retry cancelled — previous authorization is still tracked' : 'Request cancelled in MetaMask')
+    }
+    throw Error(tracking.kind === 'authorization'
+      ? 'Authorization outcome uncertain — check MetaMask activity or use Retry authorization'
+      : 'Transaction outcome uncertain — check MetaMask activity; do not resubmit')
   }
 }
 export async function confirmed(account: string, tracking: Tracking, onTrack: (t: Tracking) => void) {

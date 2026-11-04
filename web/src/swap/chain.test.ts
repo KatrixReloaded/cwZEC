@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { decodeFunctionData } from 'viem'
-const rpc = vi.hoisted(() => ({ readContract: vi.fn(), getChainId: vi.fn(), getCode: vi.fn(), getTransaction: vi.fn(), waitForTransactionReceipt: vi.fn(), getBlock: vi.fn(), getBlockNumber: vi.fn() }))
+const rpc = vi.hoisted(() => ({ readContract: vi.fn(), getChainId: vi.fn(), getCode: vi.fn(), getTransaction: vi.fn(), getTransactionCount: vi.fn(), waitForTransactionReceipt: vi.fn(), getBlock: vi.fn(), getBlockNumber: vi.fn() }))
 vi.mock('viem', async original => ({ ...await original<typeof import('viem')>(), createPublicClient: () => rpc }))
 vi.mock('../wallet/metamask', () => ({ metamask: { provider: () => p } }))
 import { abi, BALANCER, POOL, SIGNER, UNDERLYING, USDC, ZEC } from './core'
-import { authorizationData, authorized, configuration, confirmed, loadTracking, saveTracking, send, session, trackingKey } from './chain'
+import { authorizationData, authorized, configuration, confirmed, loadTracking, recoverAuthorization, retryAuthorization, saveTracking, send, session, trackingKey } from './chain'
 const account = '0x1111111111111111111111111111111111111111'
 const hash = ('0x' + 'aa'.repeat(32)) as `0x${string}`
 const p = { request: vi.fn(), on: vi.fn(), removeListener: vi.fn() }
@@ -14,6 +14,71 @@ beforeEach(() => {
   memory = new Map()
   vi.stubGlobal('localStorage', { getItem: (k: string) => memory.get(k) ?? null, setItem: (k: string, v: string) => memory.set(k, v), removeItem: (k: string) => memory.delete(k) })
   p.request.mockImplementation(async ({ method }) => ({ eth_accounts: [account], eth_chainId: '0xaa36a7', eth_getTransactionCount: '0x1', eth_sendTransaction: hash })[method as string])
+})
+describe('authorization recovery', () => {
+  beforeEach(() => {
+    rpc.getBlockNumber.mockResolvedValue(11n)
+    rpc.getBlock.mockResolvedValue({ hash })
+    rpc.getTransactionCount.mockResolvedValue(2)
+    saveTracking(account, { kind: 'authorization', nonce: '1' })
+  })
+  it.each([undefined, hash])('clears settled authorization with or without a saved hash: %s', async txHash => {
+    saveTracking(account, { kind: 'authorization', nonce: '1', hash: txHash })
+    expect(await recoverAuthorization(account, () => {})).toBe(true)
+    expect(rpc.getTransactionCount).toHaveBeenCalledWith({ address: account, blockNumber: 10n })
+    expect(loadTracking(account)).toBeNull()
+    expect(p.request).not.toHaveBeenCalled()
+  })
+  it('retains an unconsumed authorization and never applies nonce-only recovery to swaps', async () => {
+    rpc.getTransactionCount.mockResolvedValue(1)
+    expect(await recoverAuthorization(account, () => {})).toBe(false)
+    expect(loadTracking(account)?.nonce).toBe('1')
+    rpc.getBlockNumber.mockClear()
+    saveTracking(account, { kind: 'swap', nonce: '1', hash })
+    expect(await recoverAuthorization(account, () => {})).toBe(false)
+    expect(rpc.getBlockNumber).not.toHaveBeenCalled()
+    expect(loadTracking(account)?.kind).toBe('swap')
+  })
+  it('preserves tracking on reorg, stale scope, or a changed record', async () => {
+    rpc.getBlock.mockResolvedValueOnce({ hash }).mockResolvedValueOnce({ hash: '0xbb' })
+    await expect(recoverAuthorization(account, () => {})).rejects.toThrow('Confirmation changed')
+    await expect(recoverAuthorization(account, () => { throw Error('stale scope') })).rejects.toThrow('stale scope')
+    expect(loadTracking(account)?.nonce).toBe('1')
+    await expect(recoverAuthorization(account, () => saveTracking(account, { kind: 'authorization', nonce: '2' }))).rejects.toThrow('Tracking changed')
+    expect(loadTracking(account)?.nonce).toBe('2')
+  })
+  it('does not interpret an RPC failure as a settled authorization', async () => {
+    rpc.getTransactionCount.mockRejectedValue(Error('RPC unavailable'))
+    await expect(recoverAuthorization(account, () => {})).rejects.toThrow('RPC unavailable')
+    expect(loadTracking(account)).toEqual({ kind: 'authorization', nonce: '1' })
+  })
+  it('retries authorization explicitly at exactly the old nonce, not the pending nonce', async () => {
+    const notify = vi.fn()
+    const result = await retryAuthorization(account, authorizationData(1000n), () => {}, notify)
+    expect(result).toEqual({ kind: 'authorization', nonce: '1', hash })
+    expect(p.request).toHaveBeenCalledWith({ method: 'eth_getTransactionCount', params: [account, 'latest'] })
+    expect(p.request).toHaveBeenCalledWith({ method: 'eth_sendTransaction', params: [expect.objectContaining({ nonce: '0x1', to: ZEC, value: '0x0', data: authorizationData(1000n) })] })
+    expect(loadTracking(account)).toEqual(result)
+  })
+  it('preserves the previous authorization identity when a retry is cancelled or uncertain', async () => {
+    const previous = { kind: 'authorization' as const, nonce: '1', hash }
+    saveTracking(account, previous)
+    const base = p.request.getMockImplementation()!
+    p.request.mockImplementation(async args => { if (args.method === 'eth_sendTransaction') throw { code: 4001 }; return base(args) })
+    await expect(retryAuthorization(account, authorizationData(1000n), () => {}, () => {})).rejects.toThrow('previous authorization is still tracked')
+    expect(loadTracking(account)).toEqual(previous)
+    p.request.mockImplementation(async args => { if (args.method === 'eth_sendTransaction') throw Error('lost connection'); return base(args) })
+    await expect(retryAuthorization(account, authorizationData(1000n), () => {}, () => {})).rejects.toThrow('uncertain')
+    expect(loadTracking(account)).toEqual(previous)
+  })
+  it('does not retry if the nonce is already mined or the tracked operation is a swap', async () => {
+    const base = p.request.getMockImplementation()!
+    p.request.mockImplementation(async args => args.method === 'eth_getTransactionCount' ? '0x2' : base(args))
+    await expect(retryAuthorization(account, authorizationData(1000n), () => {}, () => {})).rejects.toThrow('nonce is mined')
+    saveTracking(account, { kind: 'swap', nonce: '1' })
+    await expect(retryAuthorization(account, authorizationData(1000n), () => {}, () => {})).rejects.toThrow('No authorization')
+    expect(p.request.mock.calls.some(([a]) => a.method === 'eth_sendTransaction')).toBe(false)
+  })
 })
 describe('authorization and deployed configuration', () => {
   it('uses ERC7984 setOperator with an explicit 10 minute expiry', async () => {
