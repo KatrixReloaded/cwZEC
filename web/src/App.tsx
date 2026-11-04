@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Backdrop } from './components/Backdrop'
 import { Banner } from './components/Banner'
 import { Header, type Menu } from './components/Header'
+import { NymStatus } from './components/NymStatus'
+import { DEMO } from './config'
 import { useBalance } from './hooks/useBalance'
 import { useBridgeInfo } from './hooks/useBridgeInfo'
 import { useCursorFx } from './hooks/useCursorFx'
@@ -57,7 +59,8 @@ export function App({ scheme = 'cyber' }: { scheme?: Scheme }) {
     <div className={cls} ref={cursor.refs.root} {...cursor.handlers}>
       <Backdrop refs={cursor.refs} veil={veil} />
       <Header route={route} wallet={wallet} info={bridge.info} menu={menu} setMenu={setMenu} />
-      {banner && <Banner kind={banner} onSwitchNetwork={wallet.switchNetwork} />}
+      {!DEMO && <NymStatus />}
+      {banner && banner !== 'nym' && <Banner kind={banner} onSwitchNetwork={wallet.switchNetwork} />}
       <main className="cw-main">
         {route === 'notfound' ? (
           <NotFound />

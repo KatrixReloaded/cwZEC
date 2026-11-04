@@ -21,6 +21,36 @@ afterEach(() => {
 })
 
 describe('Nym transport', () => {
+  it('publishes loading, connecting, pending and ready states without starting on subscribe', async () => {
+    let connecting!: () => void
+    let ready!: (f: typeof fn) => void
+    const { fn, calls } = deferredFetch()
+    const setup = vi.fn((next: () => void) => { connecting = next; return new Promise<typeof fn>(resolve => { ready = resolve }) })
+    const t = createTransport(setup)
+    const notify = vi.fn()
+    const off = t.subscribe(notify)
+    expect(t.getSnapshot()).toMatchObject({ phase: 'idle', pending: 0 })
+    expect(setup).not.toHaveBeenCalled()
+    const request = t.fetch('https://a/info', { headers: {} })
+    expect(t.getSnapshot()).toMatchObject({ phase: 'loading', pending: 1 })
+    connecting()
+    expect(t.getSnapshot().phase).toBe('connecting')
+    ready(fn)
+    await tick()
+    expect(t.getSnapshot()).toMatchObject({ phase: 'ready', pending: 1 })
+    calls[0].resolve(ok()); await request
+    expect(t.getSnapshot()).toMatchObject({ phase: 'ready', pending: 0, requestFailed: false })
+    off(); notify.mockClear()
+    await t.connect()
+    expect(notify).not.toHaveBeenCalled()
+  })
+
+  it('publishes a startup failure and retains its original cause', async () => {
+    const cause = Error('exit handshake timeout')
+    const t = createTransport(async () => { throw cause })
+    await expect(t.connect()).rejects.toMatchObject({ cause })
+    expect(t.getSnapshot().phase).toBe('failed')
+  })
   it('sets the tunnel up once for concurrent and later requests', async () => {
     const mix = vi.fn(async (_url: string, _init?: unknown) => ok())
     const setup = vi.fn(async () => mix)
@@ -115,6 +145,7 @@ describe('Nym transport', () => {
     await tick()
     c.abort(new DOMException('deadline', 'TimeoutError'))
     expect(await stalled).toBe(c.signal.reason)
+    expect(t.getSnapshot()).toMatchObject({ phase: 'ready', pending: 1, requestFailed: true })
     expect(t.outstanding()).toBe(1)
     const retry = t.fetch('https://a/status', { headers: {} })
     await tick()

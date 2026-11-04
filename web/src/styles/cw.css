@@ -95,6 +95,7 @@ body{margin:0}
 .cw-hd-r{display:flex;align-items:center;gap:12px;flex:none}
 .cw-tabs{display:none;height:44px;position:relative;z-index:3}
 .cw-tabs a{flex:1;justify-content:center}
+.nym-status{position:relative;z-index:2;max-width:1024px;margin:0 auto;padding:8px 32px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
 
 /* Testnet pill */
 .cw-pill{position:relative;display:inline-flex;align-items:center;gap:6px;height:44px;padding:0 12px;border:1px solid var(--border);border-radius:6px;background:color-mix(in srgb,var(--surface) 80%,transparent);color:var(--fg);font:inherit;font-family:var(--mono);font-size:12px;line-height:16px;font-weight:500;cursor:pointer;white-space:nowrap;transition:border-color 200ms,box-shadow 300ms var(--ease)}

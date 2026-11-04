@@ -23,6 +23,8 @@ Zama relayer are not routed. The API still receives the addresses and request da
 
 - One tunnel per page, started lazily by the first request (an 18 MB lazy chunk with inlined WASM and
   worker), default mixing and cover traffic. All live requests wait for it.
+- A compact status below the header shows SDK loading, connecting, waiting for responses, ready,
+  or startup failure, with elapsed seconds while waiting. It appears on all live pages, including Swap.
 - No native `fetch` fallback. If setup fails, the connection requires a page reload; the banner
   reads "Couldn't connect through Nym." with Reload. A request timeout does not disable the
   shared tunnel: status polling retries, and other requests can still finish.
