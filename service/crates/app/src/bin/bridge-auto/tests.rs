@@ -4,6 +4,11 @@ use super::safe_message;
 fn diagnostics_accept_only_exact_local_messages() {
     assert_eq!(safe_message("scan: commit"), Some("scan: commit"));
     for message in [
+        "scan: retry tip",
+        "scan: retry checkpoint hash",
+        "near-tip GetBlock availability retries exhausted",
+        "near-tip GetBlock retry tip changed",
+        "near-tip GetBlock retry checkpoint changed",
         "RPC block lookup failed",
         "RPC log lookup failed",
         "RPC receipt lookup failed",
@@ -22,6 +27,8 @@ fn diagnostics_accept_only_exact_local_messages() {
         "scan: commit: private SQL row",
         "lightwalletd GetBlock\nprivate remote details",
         "private SDK response",
+        "near-tip GetBlock availability retries exhausted: private server text",
+        "scan: retry checkpoint hash\nprivate remote details",
         "RPC block lookup failed: https://private-rpc.invalid/token",
         "RPC log lookup failed\nprivate remote details",
         "redemption: sign payout: private destination",

@@ -1,6 +1,8 @@
 //! Ironwood-only consecutive-block scanner. Persistence and rewind decisions belong to app.
 use crate::core::note::{decode_tree, decode_witness, restore_note};
 
+mod availability;
+
 use std::{
     collections::{HashMap, HashSet},
     io::Cursor,

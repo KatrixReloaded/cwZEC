@@ -334,6 +334,11 @@ fn report_failure(error: &anyhow::Error) {
 fn safe_message(message: &str) -> Option<&str> {
     match message {
         "scan: tip"
+        | "scan: retry tip"
+        | "scan: retry checkpoint hash"
+        | "near-tip GetBlock availability retries exhausted"
+        | "near-tip GetBlock retry tip changed"
+        | "near-tip GetBlock retry checkpoint changed"
         | "EVM scan: batch"
         | "EVM scan: head"
         | "scan: load"

@@ -76,7 +76,16 @@ impl LightwalletClient {
     }
 
     pub async fn block(&self, height: u32) -> Result<CompactBlock> {
-        let block: CompactBlock = self.call("GetBlock", BlockId::at(height)).await?;
+        let block: CompactBlock =
+            self.call("GetBlock", BlockId::at(height))
+                .await
+                .map_err(|error| {
+                    if failure_code(&error) == Some(tonic::Code::OutOfRange as i32) {
+                        error.context(BlockOutOfRange { height })
+                    } else {
+                        error
+                    }
+                })?;
         ensure!(
             block.height == u64::from(height),
             "wrong compact block height"
@@ -149,6 +158,19 @@ impl LightwalletClient {
     }
 }
 
+/// Identifies the method and requested height without trusting remote status text.
+/// This alone does not establish that an unavailable block is safe to retry.
+#[derive(Debug)]
+pub(crate) struct BlockOutOfRange {
+    pub height: u32,
+}
+impl std::fmt::Display for BlockOutOfRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "GetBlock out of range at height {}", self.height)
+    }
+}
+impl std::error::Error for BlockOutOfRange {}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TransactionLookup {
     Returned { height: u64 },
@@ -183,6 +205,10 @@ fn classify_transaction(result: Result<RawTransaction>) -> TransactionLookup {
 #[cfg(test)]
 #[path = "rpc/death_tests.rs"]
 mod death_tests;
+
+#[cfg(test)]
+#[path = "rpc/availability_tests.rs"]
+mod availability_tests;
 
 pub(crate) fn fixed<const N: usize>(bytes: &[u8], what: &str) -> Result<[u8; N]> {
     bytes

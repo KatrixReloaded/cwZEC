@@ -156,11 +156,14 @@ impl Service {
                     .height
                     .saturating_add(zcash::watcher::SCAN_BATCH_BLOCKS),
             );
-            let blocks = self
+            let Some(blocks) = self
                 .watcher
-                .fetch_batch(state.checkpoint.height + 1, end)
+                .fetch_scan_batch_until(&state.checkpoint, end, tip, &stopping)
                 .await
-                .context("scan: fetch batch")?;
+                .context("scan: fetch batch")?
+            else {
+                return Ok(false);
+            };
             let mut rpc_time = started.elapsed();
             let mut scan_time = Duration::ZERO;
             let mut store_time = Duration::ZERO;
