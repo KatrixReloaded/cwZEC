@@ -1,0 +1,7 @@
+{
+  "bytes_length": 6010,
+  "description": "Synthetic V6 NU7 Ironwood test fixture with dummy authorization; not consensus-valid; never broadcast",
+  "expiry_height": 4465028,
+  "inputs_and_fee": "Application tests supply arbitrary input identifiers and fee separately",
+  "txid_protocol_hex": "86cd8abeb7c12309063631c0e1a2a8dd352061ad135668d8e4dce94667e49fd2"
+}
