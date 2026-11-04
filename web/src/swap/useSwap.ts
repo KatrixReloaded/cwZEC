@@ -1,0 +1,122 @@
+import { useEffect, useRef, useState } from 'react'
+import type { Hex } from 'viem'
+import { DEMO } from '../config'
+import type { Wallet } from '../hooks/useWallet'
+import { metamask } from '../wallet/metamask'
+import { now, outcome, paymentHandle, terms, type Signed } from './core'
+import { authorizationData, authorized, clearTracking, configuration, confirmed, loadTracking, saveTracking, send, session, type Tracking } from './chain'
+import { fetchQuote } from './quote'
+import { executeSwap } from './flow'
+
+export function useSwap(wallet: Wallet) {
+  const account = wallet.connected ? wallet.address : null
+  const [amount, setAmount] = useState('')
+  const [slippage, setSlippage] = useState('50')
+  const [config, setConfig] = useState<Awaited<ReturnType<typeof configuration>> | null>(null)
+  const [quote, setQuote] = useState<Signed | null>(null)
+  const [permission, setPermission] = useState(false)
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [tracking, setTracking] = useState<Tracking | null>(null)
+  const [completedHash, setCompletedHash] = useState<Hex | null>(null)
+  const [handle, setHandle] = useState<Hex | null>(null)
+  const [revision, setRevision] = useState(0)
+  const [clock, setClock] = useState(now())
+  const lifetime = useRef<AbortController | null>(null)
+  const generation = useRef(0), lock = useRef(false), scope = useRef(account)
+  if (scope.current !== account) { scope.current = account; generation.current++; lifetime.current?.abort() }
+  const tracked = (t: Tracking) => { if (scope.current === account) setTracking(t.nonce ? { ...t } : null) }
+  useEffect(() => {
+    const id = ++generation.current
+    let timer: ReturnType<typeof setTimeout>
+    const abort = new AbortController()
+    lifetime.current = abort
+    setAmount(''); setConfig(null); setQuote(null); setPermission(false); setMessage(''); setHandle(null); setCompletedHash(null)
+    setTracking(account ? loadTracking(account) : null)
+    const off = metamask.subscribe(() => { generation.current++; setRevision(r => r + 1); abort.abort(); setQuote(null); setHandle(null); setMessage(''); setCompletedHash(null); setConfig(null); setPermission(false) })
+    const tick = setInterval(() => setClock(now()), 1000)
+    async function poll() {
+      if (!account || DEMO) return
+      if (lock.current) { timer = setTimeout(poll, 15000); return }
+      try {
+        await session(account)
+        const c = await configuration()
+        const allowed = await authorized(account)
+        if (id !== generation.current) return
+        setConfig(c); setPermission(allowed)
+        const q = await fetchQuote(c.signer, abort.signal)
+        if (id === generation.current && !lock.current) setQuote(q)
+      } catch { if (id === generation.current) setQuote(null) }
+      if (id === generation.current) timer = setTimeout(poll, 15000)
+    }
+    void poll()
+    return () => { generation.current++; abort.abort(); clearTimeout(timer); clearInterval(tick); off() }
+  }, [account, revision])
+  let estimate: ReturnType<typeof terms> | null = null
+  let invalid = ''
+  try { if (quote && config) estimate = terms(amount, quote.quote.priceE8, config.fee, BigInt(slippage)) } catch (e) { invalid = (e as Error).message }
+  const priceReady = !!quote && quote.quote.expiresAt > clock
+  async function run(work: (check: () => void) => Promise<void>) {
+    if (lock.current || !account || DEMO) return
+    lock.current = true; setBusy(true); setMessage('')
+    const id = generation.current
+    const check = () => { if (id !== generation.current || scope.current !== account) throw Error('Wallet changed — operation stopped') }
+    try { await work(check) } catch (e) { if (id === generation.current) setMessage((e as Error).message) }
+    finally { lock.current = false; setBusy(false) }
+  }
+  async function track(t: Tracking, check: () => void) {
+    setMessage('Waiting for two confirmations…')
+    const result = await confirmed(account!, t, tracked); check(); await session(account!); check()
+    clearTracking(account!); setTracking(null); setCompletedHash(result.receipt.transactionHash)
+    if (result.replaced) { setMessage('Transaction replaced or cancelled — review wallet activity'); return }
+    if (result.receipt.status !== 'success') { setMessage('Transaction reverted'); return }
+    if (t.kind === 'authorization') {
+      const allowed = await authorized(account!); check(); setPermission(allowed)
+      setMessage('Operator authorization confirmed')
+      setQuote(null)
+      const q = await fetchQuote(config?.signer ?? (await configuration()).signer); check(); setQuote(q)
+    } else {
+      setHandle(paymentHandle(result.receipt.logs, account!))
+      setMessage('Transaction confirmed — verify balances')
+    }
+  }
+  const authorize = () => run(async check => {
+    setHandle(null)
+    if (loadTracking(account!)) throw Error('Resolve the tracked transaction first')
+    await session(account!); check(); await configuration(); check()
+    setMessage('Authorize Swap as cwZEC operator for 10 minutes in MetaMask')
+    const t = await send(account!, 'authorization', authorizationData(now()), check, tracked)
+    check(); await track(t, check)
+  })
+  const swap = () => {
+    const accepted = estimate
+    const selectedQuote = quote
+    if (!accepted || !selectedQuote || !config || !priceReady) return
+    return run(async check => {
+      setHandle(null)
+      const t = await executeSwap(account!, accepted, config.fee, check, setMessage, tracked, lifetime.current?.signal)
+      check(); await track(t, check)
+    })
+  }
+  const resume = (hash?: string) => run(async check => {
+    const t = loadTracking(account!)
+    if (!t) { setTracking(null); throw Error('No transaction to track') }
+    if (hash) {
+      if (!/^0x[\da-f]{64}$/i.test(hash)) throw Error('Enter a valid transaction hash')
+      t.hash = hash as Hex; saveTracking(account!, t); tracked(t)
+    }
+    await track(t, check)
+  })
+  const verify = () => run(async check => {
+    if (!handle) return
+    await session(account!); check()
+    const { decryptPayment } = await import('./fhe'); check()
+    try {
+      const paid = await decryptPayment(account!, handle, lifetime.current?.signal); check(); await session(account!); check()
+      setMessage(outcome(paid)); setHandle(null)
+    } catch {
+      check(); setMessage('Transaction confirmed — verify balances. Payment reveal unavailable.')
+    }
+  })
+  return { amount, setAmount, slippage, setSlippage, config, quote, priceReady, estimate, invalid, permission, message, busy, tracking, handle, completedHash, authorize, swap, resume, verify }
+}

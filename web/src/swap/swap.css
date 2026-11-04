@@ -1,0 +1,8 @@
+.swap-page .swap-pair,.swap-page .swap-status{overflow-wrap:anywhere}
+.swap-page .swap-pair h2{font-size:24px;font-weight:500;margin:0 0 8px}
+.swap-page .swap-slippage,.swap-page .swap-balance{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.swap-page select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 12px}
+.swap-page input{width:100%;min-width:0;box-sizing:border-box}
+.swap-page button:disabled{opacity:.45;cursor:default}
+.swap-page a{overflow-wrap:anywhere}
+@media(max-width:600px){.swap-page .swap-pair h2{font-size:21px}}

@@ -15,6 +15,7 @@ export function Header({ route, wallet, info, menu, setMenu }: Props) {
   const nav = (
     <>
       <a href="#deposit" aria-current={route === 'deposit' ? 'page' : undefined} onClick={() => setMenu(null)}>Deposit</a>
+      <a href="#swap" aria-current={route === 'swap' ? 'page' : undefined} onClick={() => setMenu(null)}>Swap</a>
       <a href="#redeem" aria-current={route === 'redeem' ? 'page' : undefined} onClick={() => setMenu(null)}>Redeem</a>
     </>
   )

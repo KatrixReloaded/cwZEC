@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 
-export type Route = 'deposit' | 'redeem' | 'notfound'
+export type Route = 'deposit' | 'redeem' | 'swap' | 'notfound'
 
 function read(): Route {
   const h = window.location.hash.slice(1)
   if (h === '' || h === 'deposit') return 'deposit'
-  return h === 'redeem' ? 'redeem' : 'notfound'
+  return h === 'swap' ? 'swap' : h === 'redeem' ? 'redeem' : 'notfound'
 }
 
 export function useHashRoute() {

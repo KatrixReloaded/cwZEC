@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Route } from './useHashRoute'
 
-export type View = 'deposit' | 'redeem'
+export type View = 'deposit' | 'redeem' | 'swap'
 export type ViewPhase = 'in' | 'pre' | 'out' | 'gone'
 type Phases = Record<View, ViewPhase>
 
-const only = (v: Route): Phases => ({ deposit: v === 'deposit' ? 'in' : 'gone', redeem: v === 'redeem' ? 'in' : 'gone' })
+const only = (v: Route): Phases => ({ swap: v === 'swap' ? 'in' : 'gone', deposit: v === 'deposit' ? 'in' : 'gone', redeem: v === 'redeem' ? 'in' : 'gone' })
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
 /**
@@ -35,10 +35,14 @@ export function useViewTransition(route: Route) {
     next[to] = pre ? 'pre' : 'in'
     next[old] = next[old] === 'pre' || next[old] === 'gone' ? 'gone' : 'out'
     set(next)
-    setVeil({ key: ++s.key, dir: to === 'redeem' ? 'fwd' : 'rev' })
+    setVeil({ key: ++s.key, dir: to === 'redeem' || (to === 'swap' && from === 'deposit') ? 'fwd' : 'rev' })
 
     if (pre) later(300, () => s.phases[to] === 'pre' && set({ ...s.phases, [to]: 'in' }))
     later(720, () => s.phases[old] === 'out' && set({ ...s.phases, [old]: 'gone' }))
+    // A rapid third navigation cancels prior timers; retire any earlier outgoing view too.
+    for (const v of ['deposit', 'redeem', 'swap'] as const) {
+      if (v !== old && v !== to) later(720, () => s.phases[v] !== 'gone' && set({ ...s.phases, [v]: 'gone' }))
+    }
     later(900, () => setVeil(null))
   }, [route])
 

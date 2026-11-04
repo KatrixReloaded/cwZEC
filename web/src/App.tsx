@@ -12,6 +12,7 @@ import { useViewTransition, type ViewPhase } from './hooks/useViewTransition'
 import { useWallet } from './hooks/useWallet'
 import { DepositView } from './views/DepositView'
 import { NotFound } from './views/NotFound'
+import { SwapView } from './views/SwapView'
 import { RedeemView } from './views/RedeemView'
 
 export type Scheme = 'cyber' | 'dark' | 'light'
@@ -48,7 +49,7 @@ export function App({ scheme = 'cyber' }: { scheme?: Scheme }) {
   }, [])
   useEffect(() => setMenu(null), [route])
 
-  const banner = wallet.status === 'wrong' ? 'wrongnet' : bridge.banner
+  const banner = wallet.status === 'wrong' ? 'wrongnet' : route === 'swap' ? null : bridge.banner
   const openPicker = () => setMenu('picker')
   const cls = ['cw', scheme === 'dark' ? '' : scheme, booting && 'cw-boot'].filter(Boolean).join(' ')
 
@@ -64,6 +65,9 @@ export function App({ scheme = 'cyber' }: { scheme?: Scheme }) {
           <div className="cw-views">
             <ViewFrame title="Deposit" phase={phases.deposit}>
               <DepositView d={deposit} wallet={wallet} balance={balance} bridge={bridge} onConnect={openPicker} />
+            </ViewFrame>
+            <ViewFrame title="Swap" phase={phases.swap}>
+              <SwapView wallet={wallet} onConnect={openPicker} />
             </ViewFrame>
             <ViewFrame title="Redeem" phase={phases.redeem}>
               <RedeemView r={redeem} wallet={wallet} balance={balance} deposit={deposit} bridge={bridge} onConnect={openPicker} />

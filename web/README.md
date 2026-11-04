@@ -119,3 +119,126 @@ they are bound to the user and contract by the backend's encryption.
 | `src/hooks/` | React glue (`usePoll`, `useBridgeInfo`, `useDeposit`, `useRedeem`, `useBalance`, `useWallet`) |
 | `src/components/`, `src/views/` | UI |
 | `src/**/*.test.ts`, `src/test/` | Vitest tests and fixtures |
+
+## Swap · cwZEC → mock-backed cUSDC
+
+`#swap` is a live-only Sepolia page, independent of bridge API availability. Demo
+mode disables Swap rather than simulating a funded result. Existing Deposit and
+Redeem logic is unchanged. New logic, styles and separate unit tests live in
+`src/swap/`, with `src/views/SwapView.tsx` as the page.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `VITE_SWAP_QUOTE_URL` | unset | Public HTTPS **origin** of the standalone price service, e.g. `https://prices.example.com`; the page requests `/quote` through the existing Nym tunnel |
+
+The current service at `127.0.0.1:8789` is **not reachable by a Nym exit**. An
+operator must arrange public HTTPS with a trusted certificate and no redirects,
+then set `VITE_SWAP_QUOTE_URL` in the frontend build environment and rebuild.
+Do not use a localhost URL, frontend same-origin proxy, credentials or secret API
+keys. Keep the quote origin **absent** from CSP `connect-src`; the existing Nym
+and bridge transport/CSP configuration needs no changes. This implementation
+neither exposes nor restarts the service. Until setup is supplied, the page
+shows **Price unavailable** and cannot submit a swap. MetaMask RPC, encryption
+relayer traffic and wallet-authorized decryption use the existing wallet/Zama
+integration, not Nym. Quotes contain no user address or amount.
+
+On connection and before transactions, the page checks chain 11155111, deployed
+code, token decimals/backing, balancer token and pool configuration through
+MetaMask. Read-only live calls on 2026-11-04 verified:
+
+- Pool `0xa47a8e065836082061F58D2a2c751f72F1226426`.
+- cwZEC `0x91cac58cea711bd9487721824ea38e2b5742253f`.
+- cUSDC `0xd2BBe2681a3cB05C73901dcc836f676801D013A3`, backed by mock USDC
+  `0x12445A9dd878282004E1E76d6124A5D191FDbecB`.
+- Balancer `0x89f2D06A3cD63b6c0a2eC14c341b3F8b02cE963c`.
+- Quote signer `0xf988419246ab423a3C78075bF1dafB6BE087C6F8` and `feeBps() = 100`.
+
+The displayed fee is read from the contract. Quotes are shape/range/freshness
+checked and EIP-712 recovered for the exact CWZECSwap v1 domain. Requests are
+serialized, polls start after prior work settles, and late results from previous
+wallet scopes are ignored. Authorization is an explicit ERC7984 `setOperator`
+for 10 minutes, allowing **any cwZEC amount** during that window; it is not an
+ERC20 allowance. A new quote is fetched after its confirmation and at Swap.
+The minimum displayed when Swap is clicked is retained even if a later price
+falls. All amount, fee and slippage calculations use BigInt; no financial float
+conversion is used. The default slippage is 0.5%.
+
+SDK 3.7.1's browser `sdk.encrypt({values:[{type:'euint64',value:amount},
+{type:'euint64',value:minimum}],contractAddress:pool,userAddress:seller})` binds
+both inputs together. The legacy `createEncryptedInput` API in older notes is
+not used. Expiry is checked again immediately before requesting a zero-ETH
+transaction. Expiry while the wallet prompt is open can still cause a revert.
+No failed or ambiguous transaction is automatically resubmitted.
+
+The tracker requires two confirmations and checks the receipt block against the
+canonical block. Repricing follows the replacement hash; cancellation or changed
+calldata is reported as replacement, not a fill. Only `{kind, nonce, hash?}` is
+saved, keyed by chain/pool/account, before the wallet send. Reload and choose
+**Check confirmations** to resume; if the wallet returned no hash, enter it from
+MetaMask activity. A recovery hash must have the expected sender and nonce.
+An unresolved send blocks another send. A send with no obtainable hash stays
+uncertain: inspect wallet activity instead of starting another transaction.
+
+**Receipt success does not mean filled.** The pinned ERC7984
+`ConfidentialTransfer` indexes all three values, including the payment handle.
+Its `_update` grants both recipient and token access to the *transferred* handle.
+The page selects exactly one cUSDC payment from this pool to this seller in the
+confirmed receipt. **Verify exact payment · sign reveal** requests a cUSDC permit
+and decrypts that specific handle through the installed SDK. Zero means
+**Not filled — cwZEC refunded**; a positive value permits **Swapped** with the
+exact cUSDC received. Missing/ambiguous events, a declined permit or a relayer
+failure leave the result unverified: **Transaction confirmed — verify balances**.
+Current balances are never used to infer a transaction's fill. Both tokens have
+optional wallet-authorized balance reveal. Balances are hidden when transaction
+tracking changes. Reveals, plaintext inputs, ciphertext payloads, permits and
+transport keys are never persisted; scope changes/disconnect clear revealed
+state and each SDK instance terminates with memory-only storage. No pool balance
+is read or revealed, and available inventory is never assumed.
+
+### Manual live acceptance (requires the user's wallet interaction)
+
+1. Arrange the HTTPS quote origin above; build in live mode with
+   `VITE_SWAP_QUOTE_URL=https://prices.example.com npm run build` from `web`.
+   Serve the build with the existing Netlify CSP. Do not add its origin to CSP.
+2. At desktop and mobile sizes, navigate Deposit → Swap → Redeem, including
+   rapid clicks; verify the grid fade, active tabs, controls and no horizontal
+   scroll. Confirm Deposit memo/status and Redeem prepare/tracking still work
+   using their existing acceptance procedures and configured bridge API.
+3. With HTTPS unset or unavailable, expect Price unavailable and disabled Swap.
+   With it configured, verify `/quote` requests in service ingress logs come
+   from Nym exits; browser requests should show no direct quote HTTP request.
+   Block Nym bootstrap and reload: no native-fetch fallback may occur.
+4. Connect MetaMask on another chain; verify the Sepolia switch. Connect the
+   intended seller and check the fee is 1.0%. Reveal each private balance only
+   by accepting its wallet permit. Switch account/network or disconnect while
+   revealing: old plaintext/results must disappear.
+5. Enter an amount with at most 8 decimals and select slippage. Verify estimate
+   and minimum. If needed click **Authorize operator · 10 min**, inspect pool
+   and expiry in MetaMask, and explicitly accept. First try rejection to confirm
+   no swap follows. Authorization confirmation must fetch a fresh signed price.
+6. Only when ready to spend testnet tokens/gas, click Swap yourself. Accept the
+   zero-ETH swap in MetaMask before quote expiry. Repeated clicks must not create
+   another send. During a separate attempt, delay beyond expiry, reject a wallet
+   request, or change account/network; the page must stop or report the revert
+   without resubmitting. The encrypted minimum must remain the clicked minimum.
+7. Wait for two canonical confirmations. Inspect the explorer link, then click
+   **Verify exact payment · sign reveal** and explicitly accept the permit.
+   A positive transaction-specific amount should show Swapped with that amount.
+   A zero payment should show Not filled — cwZEC refunded. If verification is
+   unavailable/declined, retain the unverified confirmation and optionally reveal
+   wallet balances. Do not treat a successful receipt or balance delta as a fill.
+8. For a deliberately overlarge inventory request or minimum rejection in a
+   user-approved test attempt, verify zero payment/refund despite receipt success.
+   Do not assume the pool's initial funding remains available; do not fund it as
+   part of this check. Gas is still spent on an encrypted rejection.
+9. Reload during pending tracking, then Check confirmations. Test MetaMask speed
+   up/cancel and an interrupted send separately. Verify replacement/cancellation
+   reporting and no automatic resubmission. Confirm localStorage contains only
+   public chain/pool/account-scoped tracking identifiers, never amounts/proofs or
+   decryption material. If no hash is known, recover from wallet activity.
+
+`npm test`, `node_modules/.bin/tsc --noEmit`, and `npm run build` from `web`
+validate the frontend. `src/swap/*.test.ts` use synthetic keys, mocked wallets,
+SDKs and receipts; they are **not live swap/decryption acceptance**. No funded
+swap or live decryption has been observed during this implementation. Public
+HTTPS setup and the user's MetaMask signatures remain required for live acceptance.
