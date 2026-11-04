@@ -1,0 +1,15 @@
+# Netlify site with base directory `web`. Set VITE_API_BASE (https://api.…) in the site's build
+# environment; it is deliberately absent from connect-src, so only the Nym tunnel can reach it.
+[build]
+  command = "npm ci && npm run build"
+  publish = "dist"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # connect-src: Nym bootstrap (nym-api) + gateway WebSockets (hosts come from topology at runtime),
+    # and the Zama relayer for balance decryption. worker-src blob: is the Nym tunnel worker;
+    # wasm-unsafe-eval covers the Nym and Zama WebAssembly. MetaMask talks to the page via its extension.
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' https://validator.nymtech.net wss: https://relayer.testnet.zama.org; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    Referrer-Policy = "no-referrer"
+    X-Content-Type-Options = "nosniff"
