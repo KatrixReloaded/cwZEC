@@ -1,0 +1,16 @@
+[workspace]
+members = ["crates/app", "crates/zcash", "crates/zama"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+publish = false
+
+[workspace.dependencies]
+zcash = { path = "crates/zcash" }
+zama = { path = "crates/zama" }
+anyhow = "=1.0.100"
+tokio = { version = "=1.48.0", features = ["macros", "rt-multi-thread", "sync", "time"] }
+tokio-postgres = "=0.7.15"
